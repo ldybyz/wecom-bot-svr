@@ -20,6 +20,7 @@ dependencies = [
     "requests>=2.32.3",
     "Flask>=3.0.0",
     "wx-crypt>=0.0.2",
+    "dotenv>=0.9.9",
 ]
 
 [project.urls]
