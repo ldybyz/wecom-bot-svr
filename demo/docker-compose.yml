@@ -1,13 +1,8 @@
 version: '1.0'
-
 services:
-  app:
-    image: WecomBot:0.1
-    container_name: WecomBot
-    # 使用当前目录下的 Dockerfile 来构建镜像
+  wecombot:
+    image: crpi-40d64hpk9w60wnns.cn-shanghai.personal.cr.aliyuncs.com/bedlims/wecombot:0.1
+    container_name: wecombot
     env_file:
-      # 加载 .env 文件中的所有环境变量
-      - WecomBot.env
-    ports:
-      - "5001:5001"
+      - wecombot.env
     restart: unless-stopped
