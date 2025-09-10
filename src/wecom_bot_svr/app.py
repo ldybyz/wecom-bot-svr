@@ -143,7 +143,7 @@ class WecomBotServer(object):
         ret, msg = wx_cpt.DecryptMsg(request.data, msg_signature, timestamp, nonce)
         if ret != 0:
             print("err: encrypt fail: " + str(ret))
-            print("err: encrypt fail,data= " + request.get_data())
+            print("err: encrypt fail,data= " + request.get_data().decode('utf-8'))
             if self._error_handler:
                 self._error_handler(ret)
             else:
