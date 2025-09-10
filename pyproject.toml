@@ -21,6 +21,7 @@ dependencies = [
     "Flask>=3.0.0",
     "pycryptodome>=3.23.0",
     "dotenv>=0.9.9",
+    "pydantic>=2.10.6",
 ]
 
 [project.urls]

@@ -9,6 +9,7 @@ from .WXBizJsonMsgCrypt import WXBizJsonMsgCrypt
 # from .req_msg import ReqMsg
 from .req_msg_json import ReqMsg
 import json
+from pydantic import BaseModel, Field, TypeAdapter
 
 # 参考文档：https://km.woa.com/articles/show/387107?kmref=search&from_page=1&no=2#10128
 
@@ -165,7 +166,9 @@ class WecomBotServer(object):
                 rsp_msg = self._message_handler(msg)
 
         nonce = params.get("nonce")
-        ret, rsp = wx_cpt.EncryptMsg(rsp_msg.dump_xml(), nonce, timestamp)
+
+        # ret, rsp = wx_cpt.EncryptMsg(rsp_msg.dump_xml(), nonce, timestamp)
+        ret, rsp = wx_cpt.EncryptMsg(rsp_msg.model_dump_json(indent=2), nonce, timestamp)
         if ret != 0:
             print("err: encrypt fail: " + str(ret))
         return rsp
