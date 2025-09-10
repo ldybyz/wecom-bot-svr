@@ -127,6 +127,7 @@ class WecomBotServer(object):
         wx_cpt = self.get_crypto_obj()
         ret, decrypted_echo_str = wx_cpt.VerifyURL(msg_signature, timestamp, nonce, encrypted_echo_str)
         if ret != 0:
+            print("err: encrypt fail: " + str(ret))
             return None
         return decrypted_echo_str
 
@@ -140,14 +141,14 @@ class WecomBotServer(object):
 
         # 解密出明文的echostr
         ret, msg = wx_cpt.DecryptMsg(request.data, msg_signature, timestamp, nonce)
-        self.logger.info(f"decrypted msg: {msg.decode()}")
         if ret != 0:
+            print("err: encrypt fail: " + str(ret))
             if self._error_handler:
                 self._error_handler(ret)
             else:
                 return None
             # 获取所有的查询参数
-
+        self.logger.info(f"decrypted msg: {msg.decode()}")
         # 解密后的数据是xml格式，用python的标准库xml.etree.cElementTree可以解析
         xml_tree = ET.fromstring(msg)
         msg = ReqMsg.create_msg(xml_tree)
