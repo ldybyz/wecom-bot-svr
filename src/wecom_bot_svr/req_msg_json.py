@@ -11,18 +11,18 @@ class UserInfo(object):
 
 class ReqMsg(object):
     def __init__(self, json_object):
-        user = json_object.get('From')
-        self.from_user = UserInfo(user.get('Alias'), user.get('Name'), user.get('UserId'))
-        self.msg_type = json_object.get('MsgType')
-        self.chat_type = json_object.get('ChatType')
-        self.chat_id = json_object.get('ChatId')
-        self.webhook_url = json_object.get('WebhookUrl')
-        self.msg_id = json_object.get('MsgId')
+        user = json_object.get('from')
+        self.from_user = UserInfo(user.get('alias'), user.get('name'), user.get('userid'))
+        self.msg_type = json_object.get('msgtype')
+        self.chat_type = json_object.get('chattype')
+        self.chat_id = json_object.get('chatid')
+        self.webhook_url = json_object.get('webhookurl')
+        self.msg_id = json_object.get('msgid')
         # GetChatInfoUrl
 
     @staticmethod
     def create_msg(json_object):
-        msg_type = json_object.get('MsgType')
+        msg_type = json_object.get('msgtype')
         if msg_type == 'text':
             return TextReqMsg(json_object)
         elif msg_type == 'event':
@@ -41,14 +41,14 @@ class TextReqMsg(ReqMsg):
     def __init__(self, json_object):
         super().__init__(json_object)
         self.msg_type = 'text'
-        self.content = json_object.get('Text').get('Content')
+        self.content = json_object.get('text').get('content')
 
 
 class EventReqMsg(ReqMsg):
     def __init__(self, json_object):
         super().__init__(json_object)
         self.msg_type = 'event'
-        self.event_type = json_object.get('Event').get('EventType')
+        self.event_type = json_object.get('event').get('eventtype')
         # self.event_key = None
 
 
@@ -56,7 +56,7 @@ class ImageReqMsg(ReqMsg):
     def __init__(self, json_object):
         super().__init__(json_object)
         self.msg_type = 'image'
-        self.image_url = json_object.get('Image').get('ImageUrl')
+        self.image_url = json_object.get('image').get('imageurl')
 
 
 class AttachmentAction(object):
@@ -70,22 +70,22 @@ class AttachmentReqMsg(ReqMsg):
     def __init__(self, json_object):
         super().__init__(json_object)
         self.msg_type = 'attachment'
-        self.callback_id = json_object.get('Attachment').get('CallbackId')
+        self.callback_id = json_object.get('attachment').get('callbackid')
         self.actions = []
-        e = json_object.get('Attachment').get('Actions')
-        self.actions.append(AttachmentAction(e.get('Name'), e.get('Value'), e.get('Type')))
+        e = json_object.get('attachment').get('actions')
+        self.actions.append(AttachmentAction(e.get('name'), e.get('value'), e.get('type')))
 
 
 class SimpleTextMsg(object):
     def __init__(self, json_object):
         self.msg_type = 'text'
-        self.content = json_object.get('Text').get('Content')
+        self.content = json_object.get('text').get('content')
 
 
 class SimpleImageMsg(object):
     def __init__(self, json_object):
         self.msg_type = 'image'
-        self.image_url = json_object.get('Image').get('ImageUrl')
+        self.image_url = json_object.get('image').get('imageurl')
 
 
 class MixedMessageReqMsg(ReqMsg):
@@ -93,10 +93,10 @@ class MixedMessageReqMsg(ReqMsg):
         super().__init__(json_object)
         self.msg_type = 'mixed'
         self.msg_items = []
-        for e in json_object.get('MixedMessage'):
-            if e.get('MsgType') == 'text':
+        for e in json_object.get('mixedmessage'):
+            if e.get('msgtype') == 'text':
                 self.msg_items.append(SimpleTextMsg(e))
-            elif e.get('MsgType') == 'image':
+            elif e.get('msgtype') == 'image':
                 self.msg_items.append(SimpleImageMsg(e))
             else:
                 raise Exception("unknown msg type")
