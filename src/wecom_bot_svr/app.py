@@ -5,10 +5,10 @@ import xml.etree.cElementTree as ET
 
 import requests
 from flask import Flask, request
-from wx_crypt import WXBizMsgCrypt, WxChannel_Wecom
-
-from .req_msg import ReqMsg
-
+from .WXBizJsonMsgCrypt import WXBizJsonMsgCrypt
+# from .req_msg import ReqMsg
+from .req_msg_json import ReqMsg
+import json
 
 # 参考文档：https://km.woa.com/articles/show/387107?kmref=search&from_page=1&no=2#10128
 
@@ -115,7 +115,7 @@ class WecomBotServer(object):
         return "发送消息结果：" + send_ret
 
     def get_crypto_obj(self):
-        return WXBizMsgCrypt(self._token, self._aes_key, self._corp_id, channel=WxChannel_Wecom)
+        return WXBizJsonMsgCrypt(self._token, self._aes_key, self._corp_id)
 
     def handle_bot_call_get(self):
         # 获取请求参数
@@ -139,20 +139,21 @@ class WecomBotServer(object):
         nonce = params.get("nonce")
         wx_cpt = self.get_crypto_obj()
 
+        data_as_string = request.get_data().decode('utf-8')
         # 解密出明文的echostr
-        ret, msg = wx_cpt.DecryptMsg(request.data, msg_signature, timestamp, nonce)
+        ret, msg = wx_cpt.DecryptMsg(data_as_string, msg_signature, timestamp, nonce)
         if ret != 0:
             print("err: encrypt fail: " + str(ret))
-            print("err: encrypt fail,data= " + request.get_data().decode('utf-8'))
+            print("err: encrypt fail,data= " + data_as_string)
             if self._error_handler:
                 self._error_handler(ret)
             else:
                 return None
-            # 获取所有的查询参数
-        self.logger.info(f"decrypted msg: {msg.decode()}")
+            
         # 解密后的数据是xml格式，用python的标准库xml.etree.cElementTree可以解析
-        xml_tree = ET.fromstring(msg)
-        msg = ReqMsg.create_msg(xml_tree)
+        # xml_tree = ET.fromstring(msg)
+        json_object = json.loads(msg)
+        msg = ReqMsg.create_msg(json_object)
         if msg.msg_type == 'event':
             rsp_msg = self._event_handler(msg)
         else:  # 消息

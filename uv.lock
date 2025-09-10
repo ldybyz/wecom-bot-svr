@@ -551,17 +551,17 @@ dependencies = [
     { name = "dotenv" },
     { name = "flask", version = "3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "flask", version = "3.1.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "pycryptodome" },
     { name = "requests", version = "2.32.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "requests", version = "2.32.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-    { name = "wx-crypt" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "flask", specifier = ">=3.0.0" },
+    { name = "pycryptodome", specifier = ">=3.23.0" },
     { name = "requests", specifier = ">=2.32.3" },
-    { name = "wx-crypt", specifier = ">=0.0.2" },
 ]
 
 [[package]]
@@ -593,18 +593,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/9f/69/83029f1f6300c5fb2471d621ab06f6ec6b3324685a2ce0f9777fd4a8b71e/werkzeug-3.1.3.tar.gz", hash = "sha256:60723ce945c19328679790e3282cc758aa4a6040e4bb330f53d30fa546d44746", size = 806925 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/52/24/ab44c871b0f07f491e5d2ad12c9bd7358e527510618cb1b803a88e986db1/werkzeug-3.1.3-py3-none-any.whl", hash = "sha256:54b78bf3716d19a65be4fceccc0d1d7b89e608834989dfae50ea87564639213e", size = 224498 },
-]
-
-[[package]]
-name = "wx-crypt"
-version = "0.0.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pycryptodome" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f1/4d/9ea4409c78030e6d53a8b788bd74296453a1ad306b2671f38325dee5c072/wx_crypt-0.0.2.tar.gz", hash = "sha256:e60a945f70262241f36a29caee38848e71e91cf15d6a58a74b303b8d44dd7039", size = 4341 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/71/30090b2244a7275323f05b333aca6e959c60e29c75249131d03541f35541/wx_crypt-0.0.2-py3-none-any.whl", hash = "sha256:3ae51a8540081dd20544b4bea627e7e543a62af8410aa486aa309eca6388db50", size = 5417 },
 ]
 
 [[package]]
