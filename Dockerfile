@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir uv==${UV_VERSION}
 
 
 # 4. 复制应用程序代码到工作目录
-COPY ./src/*  ./src/
+COPY ./src/  ./src/
 
 #复制依赖文件并安装依赖
 COPY pyproject.toml uv.lock ./
@@ -20,4 +20,4 @@ RUN uv sync --locked
 
 
 # 5. 当容器启动时，运行 Python 脚本
-CMD ["uv", "run", "./src/app/difybot.py"]
+CMD ["uv", "run", "/app/src/app/difybot.py"]
