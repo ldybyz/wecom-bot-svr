@@ -4,38 +4,104 @@ import sys
 from wecom_bot_svr import WecomBotServer
 # from wecom_bot_svr.req_msg import TextReqMsg
 from wecom_bot_svr.req_msg_json import TextReqMsg,ReqMsg
-from wecom_bot_svr.rsp_msg_json import RspTextMsg, RspMarkdownMsg, TextContent, MarkdownContent
+from wecom_bot_svr.rsp_msg_json import RspTextMsg, RspMarkdownMsg, TextContent, MarkdownContent, RspStreamTextMsg, StreamTextContent
 
 import os
 from dotenv import load_dotenv
 
+import string
+import random
+import json
+import time
+
 # 加载环境变量
 load_dotenv()
+
+# 常量定义
+CACHE_DIR = "/tmp/llm_demo_cache"
+MAX_STEPS = 10
+
+
+# TODO 这里模拟一个大模型的行为
+class LLMDemo():
+    def __init__(self):
+        self.cache_dir = CACHE_DIR
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
+
+    def invoke(self, question):
+        stream_id = _generate_random_string(10) # 生成一个随机字符串作为任务ID
+        # 创建任务缓存文件
+        cache_file = os.path.join(self.cache_dir, "%s.json" % stream_id)
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            json.dump({
+                'question': question,
+                'created_time': time.time(),
+                'current_step': 0,
+                'max_steps': MAX_STEPS
+            }, f)
+        return stream_id
+
+    def get_answer(self, stream_id):
+        cache_file = os.path.join(self.cache_dir, "%s.json" % stream_id)
+        if not os.path.exists(cache_file):
+            return u"任务不存在或已过期"
+            
+        with open(cache_file, 'r', encoding='utf-8') as f:
+            task_data = json.load(f)
+        
+        # 更新缓存
+        current_step = task_data['current_step'] + 1
+        task_data['current_step'] = current_step
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            json.dump(task_data, f)
+            
+        response = u'收到问题：%s\n' % task_data['question']
+        for i in range(current_step):
+            response += u'处理步骤 %d: 已完成\n' % (i)
+
+        return response
+
+    def is_task_finish(self, stream_id):
+        cache_file = os.path.join(self.cache_dir, "%s.json" % stream_id)
+        if not os.path.exists(cache_file):
+            return True
+            
+        with open(cache_file, 'r', encoding='utf-8') as f:
+            task_data = json.load(f)
+            
+        return task_data['current_step'] >= task_data['max_steps']
+
 
 def help_md():
     return """### Help 列表
 """
 
+def _generate_random_string(length):
+    letters = string.ascii_letters + string.digits
+    return ''.join(random.choice(letters) for _ in range(length))
 
 def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
     # @机器人 help 打印帮助信息
+    ret = None
     if req_msg.msg_type == 'text' and isinstance(req_msg, TextReqMsg):
-        if req_msg.content.strip() == 'help':
-            ret =RspMarkdownMsg(text=MarkdownContent(content= help_md()))
-            # ret = RspMarkdownMsg()
-            # ret.content = help_md()
-            return ret
-        elif req_msg.content.strip() == 'give me a file' and server is not None:
-            # 生成文件、发送文件可以新启线程异步处理
-            with open('output.txt', 'w') as f:
-                f.write("This is a test file. Welcome to star easy-wx/wecom-bot-svr!")
-            server.send_file(req_msg.chat_id, 'output.txt')
-            return RspTextMsg(text=TextContent(content= ''))  # 不发送消息，只回复文件
+        content = req_msg.content.strip()
+        # 询问大模型产生回复
+        llm = LLMDemo()
+        stream_id = llm.invoke(content)
+        answer = llm.get_answer(stream_id)
+        finish = llm.is_task_finish(stream_id)
+        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=finish, content=answer))
 
-    # 返回消息类型
-    #ret = RspTextMsg()
-    # ret.content = f'msg_type: {req_msg.msg_type}'
-    ret =RspTextMsg(text=TextContent(content= f'msg_type: {req_msg.msg_type}'))
+    elif (req_msg.msg_type == 'stream'): 
+        stream_id = req_msg.stream_id
+        llm = LLMDemo()
+        answer = llm.get_answer(stream_id)
+        finish = llm.is_task_finish(stream_id)
+        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=finish, content=answer))
+    else:
+        stream_id = _generate_random_string(10)
+        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=True, content="不支持的消息类型"))
     return ret
 
 
@@ -43,7 +109,7 @@ def event_handler(req_msg):
     if req_msg.event_type == 'add_to_chat':  # 入群事件处理
         # ret.content = f'msg_type: {req_msg.msg_type}\n群会话ID: {req_msg.chat_id}\n查询用法请回复: help'
         return RspTextMsg(text=TextContent(content= f'msg_type: {req_msg.msg_type}\n群会话ID: {req_msg.chat_id}\n查询用法请回复: help')) 
-    return RspTextMsg(text=TextContent(content= 'req_msg.event_type'))
+    return RspTextMsg(text=TextContent(content= req_msg.event_type))
 
 
 def main():

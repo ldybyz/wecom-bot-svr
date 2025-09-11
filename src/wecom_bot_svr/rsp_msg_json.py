@@ -9,6 +9,11 @@ class TextContent(BaseModel):
 class MarkdownContent(BaseModel):
     content: str
 
+class StreamTextContent(BaseModel):
+    id: str
+    finish: bool
+    content: str
+
 # --- 2. 定义具体的消息模型 ---
 # 基类，定义所有消息共有的字段
 class RspMsg(BaseModel):
@@ -24,3 +29,7 @@ class RspTextMsg(RspMsg):
 class RspMarkdownMsg(RspMsg):
     msgtype: str = "markdown"
     text: MarkdownContent
+
+class RspStreamTextMsg(RspMsg):
+    msgtype: str = "stream" 
+    stream: StreamTextContent

@@ -18,6 +18,7 @@ class ReqMsg(object):
         self.chat_id = json_object.get('chatid')
         self.webhook_url = json_object.get('webhookurl')
         self.msg_id = json_object.get('msgid')
+        self.aibot_id = json_object.get('aibotid')
         # GetChatInfoUrl
 
     @staticmethod
@@ -100,3 +101,9 @@ class MixedMessageReqMsg(ReqMsg):
                 self.msg_items.append(SimpleImageMsg(e))
             else:
                 raise Exception("unknown msg type")
+
+class StreamReqMsg(ReqMsg):
+    def __init__(self, json_object):
+        super().__init__(json_object)
+        self.msg_type = 'stream'
+        self.stream_id = json_object.get('stream').get('id')
