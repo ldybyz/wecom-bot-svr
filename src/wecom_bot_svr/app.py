@@ -138,9 +138,12 @@ class WecomBotServer(object):
         msg_signature = params.get("msg_signature")
         timestamp = params.get("timestamp")
         nonce = params.get("nonce")
+        botid = params.get("botid")
         wx_cpt = self.get_crypto_obj()
 
         data_as_string = request.get_data().decode('utf-8')
+
+        print(f"@收到消息，botid={botid}, msg_signature={msg_signature}, timestamp={timestamp}, nonce={nonce},body={data_as_string}")
         # 解密出明文的echostr
         ret, msg = wx_cpt.DecryptMsg(data_as_string, msg_signature, timestamp, nonce)
         if ret != 0:

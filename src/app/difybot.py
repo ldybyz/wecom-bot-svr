@@ -13,6 +13,7 @@ import string
 import random
 import json
 import time
+import requests
 
 # 加载环境变量
 load_dotenv()
@@ -20,6 +21,7 @@ load_dotenv()
 # 常量定义
 CACHE_DIR = "/tmp/llm_demo_cache"
 MAX_STEPS = 10
+ongoing_streams = {}
 
 
 # TODO 这里模拟一个大模型的行为
@@ -72,7 +74,69 @@ class LLMDemo():
             
         return task_data['current_step'] >= task_data['max_steps']
 
+class DifyLLM():
+    def __init__(self):
+        self.cache_dir = CACHE_DIR
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
 
+    def get_dify_stream_generator(wecom_user_id, prompt):
+        """调用 Dify API 并返回一个流式响应的生成器对象"""
+        DIFY_API_KEY = os.getenv('dify_api_key')
+        DIFY_API_URL = os.getenv('dify_api_url')
+        headers = {"Authorization": f"Bearer {DIFY_API_KEY}", "Content-Type": "application/json"}
+        payload = {
+            "inputs": {},
+            "query": prompt,
+            "user": wecom_user_id,
+            "response_mode": "streaming",
+        }
+        response = requests.post(DIFY_API_URL, headers=headers, json=payload, stream=True)
+        response.raise_for_status()
+
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith('data:'):
+                    try:
+                        data = json.loads(decoded_line[5:])
+                        if data['event'] == 'message':
+                            yield data['answer']
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+
+    def invoke(self, user_id, question):
+        generator = self.get_dify_stream_generator(user_id, question)
+        stream_id = _generate_random_string(10) # 生成一个随机字符串作为任务ID
+        ongoing_streams[stream_id] = generator
+        return stream_id
+
+    def get_answer(self, stream_id):
+        generator = ongoing_streams.get(stream_id)
+        if not generator:
+            return True,"任务不存在或已过期"
+        answer = ""
+        finish = False
+        try:
+            answer = next(generator)
+            finish = False
+        except StopIteration:
+            # 生成器已耗尽，这是最后一块内容
+            answer = "" # 最后一次回调可以不带内容
+            finish = True
+            # 3. 清理已结束的 stream
+            del ongoing_streams[stream_id]
+        return finish,answer
+
+    def is_task_finish(self, stream_id):
+        cache_file = os.path.join(self.cache_dir, "%s.json" % stream_id)
+        if not os.path.exists(cache_file):
+            return True
+            
+        with open(cache_file, 'r', encoding='utf-8') as f:
+            task_data = json.load(f)
+            
+        return task_data['current_step'] >= task_data['max_steps']
 def help_md():
     return """### Help 列表
 """
@@ -87,17 +151,15 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
     if req_msg.msg_type == 'text' and isinstance(req_msg, TextReqMsg):
         content = req_msg.content.strip()
         # 询问大模型产生回复
-        llm = LLMDemo()
-        stream_id = llm.invoke(content)
-        answer = llm.get_answer(stream_id)
-        finish = llm.is_task_finish(stream_id)
+        llm = DifyLLM()
+        stream_id = llm.invoke(req_msg.from_user.user_id,content)
+        finish,answer = llm.get_answer(stream_id)
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=finish, content=answer))
 
     elif (req_msg.msg_type == 'stream'): 
         stream_id = req_msg.stream_id
         llm = LLMDemo()
-        answer = llm.get_answer(stream_id)
-        finish = llm.is_task_finish(stream_id)
+        finish,answer = llm.get_answer(stream_id)
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=finish, content=answer))
     else:
         stream_id = _generate_random_string(10)
