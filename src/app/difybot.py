@@ -108,21 +108,30 @@ class DifyLLM():
     def invoke(self, user_id, question):
         generator = self.get_dify_stream_generator(user_id, question)
         stream_id = _generate_random_string(10) # 生成一个随机字符串作为任务ID
-        ongoing_streams[stream_id] = generator
+        # ongoing_streams[stream_id] = generator
+        # 存储初始状态
+        ongoing_streams[stream_id] = {
+                "generator": generator,
+                "content": ""
+            }
         return stream_id
 
     def get_answer(self, stream_id):
-        generator = ongoing_streams.get(stream_id)
-        if not generator:
+        stream_state = ongoing_streams.get(stream_id)
+        if not stream_state:
             return True,"任务不存在或已过期"
+        generator = stream_state["generator"]
+        accumulated_content = stream_state["content"]
         answer = ""
         finish = False
         try:
-            answer = next(generator)
+            next_chunk  = next(generator)
+            answer = accumulated_content + next_chunk
+            stream_state["content"] = answer
             finish = False
         except StopIteration:
             # 生成器已耗尽，这是最后一块内容
-            answer = "" # 最后一次回调可以不带内容
+            answer = accumulated_content
             finish = True
             # 3. 清理已结束的 stream
             del ongoing_streams[stream_id]
