@@ -34,6 +34,8 @@ class ReqMsg(object):
             return AttachmentReqMsg(json_object)
         elif msg_type == 'mixed':
             return MixedMessageReqMsg(json_object)
+        elif msg_type == 'stream':
+            return StreamReqMsg(json_object)
         else:
             return None
 
