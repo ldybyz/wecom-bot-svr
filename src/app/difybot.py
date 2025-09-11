@@ -40,11 +40,10 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
 
 
 def event_handler(req_msg):
-    ret = RspMarkdownMsg()
     if req_msg.event_type == 'add_to_chat':  # 入群事件处理
         # ret.content = f'msg_type: {req_msg.msg_type}\n群会话ID: {req_msg.chat_id}\n查询用法请回复: help'
-        ret.text.content = f'msg_type: {req_msg.msg_type}\n群会话ID: {req_msg.chat_id}\n查询用法请回复: help'
-    return ret
+        return RspTextMsg(text=TextContent(content= f'msg_type: {req_msg.msg_type}\n群会话ID: {req_msg.chat_id}\n查询用法请回复: help')) 
+    return RspTextMsg(text=TextContent(content= 'req_msg.event_type'))
 
 
 def main():

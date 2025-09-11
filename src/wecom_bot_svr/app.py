@@ -171,6 +171,7 @@ class WecomBotServer(object):
         ret, rsp = wx_cpt.EncryptMsg(rsp_msg.model_dump_json(indent=2), nonce, timestamp)
         if ret != 0:
             print("err: encrypt fail: " + str(ret))
+        print("rsp: " + rsp)
         return rsp
 
     def upload_file(self, file_path):
