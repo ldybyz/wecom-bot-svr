@@ -158,7 +158,7 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
 
     elif (req_msg.msg_type == 'stream'): 
         stream_id = req_msg.stream_id
-        llm = LLMDemo()
+        llm = DifyLLM()
         finish,answer = llm.get_answer(stream_id)
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=finish, content=answer))
     else:
