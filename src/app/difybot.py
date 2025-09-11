@@ -80,7 +80,7 @@ class DifyLLM():
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
 
-    def get_dify_stream_generator(wecom_user_id, prompt):
+    def get_dify_stream_generator(self,wecom_user_id, prompt):
         """调用 Dify API 并返回一个流式响应的生成器对象"""
         DIFY_API_KEY = os.getenv('dify_api_key')
         DIFY_API_URL = os.getenv('dify_api_url')
