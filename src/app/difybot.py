@@ -15,6 +15,7 @@ import json
 import time
 import requests
 import threading
+from cachetools import TTLCache
 
 # 加载环境变量
 load_dotenv()
@@ -28,7 +29,9 @@ DIFY_API_KEY = os.getenv('dify_api_key')
 DIFY_API_URL = os.getenv('dify_api_url')
 store_lock = threading.Lock()
 
-conversations_store = {}
+conversations_store = TTLCache(maxsize=1024, ttl=600)  # 10分钟过期
+
+#conversations_store = {}
 
 def run_dify_stream_and_store(conversation_id: str, query: str, user_id: str):
     """
@@ -211,6 +214,7 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
         stream_id = req_msg.stream_id
         llm = DifyLLM()
         finish,answer = llm.get_answer(stream_id)
+
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=finish, content=answer))
     else:
         stream_id = _generate_random_string(10)
