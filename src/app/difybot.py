@@ -45,7 +45,13 @@ def run_dify_stream_and_store(conversation_id: str, query: str, user_id: str):
 
     DIFY_API_KEY = os.getenv('dify_api_key')
     DIFY_API_URL = os.getenv('dify_api_url')
-    headers = {"Authorization": f"Bearer {DIFY_API_KEY}", "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {DIFY_API_KEY}", 
+        "Content-Type": "application/json",
+        'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",  
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive'}
     payload = {
         "inputs": {},
         "query": query,
