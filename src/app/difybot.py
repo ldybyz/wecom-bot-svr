@@ -14,6 +14,7 @@ import random
 import json
 import time
 import requests
+import threading
 
 # 加载环境变量
 load_dotenv()
@@ -23,6 +24,49 @@ CACHE_DIR = "/tmp/llm_demo_cache"
 MAX_STEPS = 10
 ongoing_streams = {}
 
+DIFY_API_KEY = os.getenv('dify_api_key')
+DIFY_API_URL = os.getenv('dify_api_url')
+store_lock = threading.Lock()
+
+conversations_store = {}
+
+def run_dify_stream_and_store(conversation_id: str, query: str, user_id: str):
+    """
+    这个函数在独立的后台线程中运行。
+    它调用Dify的流式API，并线程安全地将累加结果存入 conversations_store。
+    """
+
+    # 初始化存储
+    with store_lock:
+        conversations_store[conversation_id] = {"status": "processing", "response": ""}
+
+    DIFY_API_KEY = os.getenv('dify_api_key')
+    DIFY_API_URL = os.getenv('dify_api_url')
+    headers = {"Authorization": f"Bearer {DIFY_API_KEY}", "Content-Type": "application/json"}
+    payload = {
+        "inputs": {},
+        "query": query,
+        "user": user_id,
+        "response_mode": "streaming",
+    }
+    
+    try:
+        # 循环调用Dify的流式接口
+        for chunk in  requests.post(DIFY_API_URL, headers=headers, json=payload, stream=True):
+            if chunk.event == "agent_message" or chunk.event == "message":
+                # 使用锁来安全地更新共享字典
+                with store_lock:
+                    conversations_store[conversation_id]["response"] += chunk.answer
+        
+        # Dify流结束，更新最终状态
+        with store_lock:
+            conversations_store[conversation_id]["status"] = "completed"
+
+    except Exception as e:
+        print(f"An error occurred in Dify stream for {conversation_id}: {e}")
+        with store_lock:
+            conversations_store[conversation_id]["status"] = "error"
+            conversations_store[conversation_id]["response"] = f"An error occurred: {e}"
 
 # TODO 这里模拟一个大模型的行为
 class LLMDemo():
@@ -105,36 +149,28 @@ class DifyLLM():
                     except (json.JSONDecodeError, KeyError):
                         continue
 
+    
     def invoke(self, user_id, question):
-        generator = self.get_dify_stream_generator(user_id, question)
         stream_id = _generate_random_string(10) # 生成一个随机字符串作为任务ID
-        # ongoing_streams[stream_id] = generator
-        # 存储初始状态
-        ongoing_streams[stream_id] = {
-                "generator": generator,
-                "content": ""
-            }
+        # 创建并启动后台线程
+        thread = threading.Thread(
+            target=run_dify_stream_and_store,
+            args=(stream_id, question, user_id)
+        )
+        thread.daemon = True  # 允许主程序退出而无需等待此线程结束
+        thread.start()
         return stream_id
 
     def get_answer(self, stream_id):
-        stream_state = ongoing_streams.get(stream_id)
-        if not stream_state:
+
+        with store_lock:
+            task_data = conversations_store.get(stream_id)
+
+        if not task_data:
             return True,"任务不存在或已过期"
-        generator = stream_state["generator"]
-        accumulated_content = stream_state["content"]
-        answer = ""
-        finish = False
-        try:
-            next_chunk  = next(generator)
-            answer = accumulated_content + next_chunk
-            stream_state["content"] = answer
-            finish = False
-        except StopIteration:
-            # 生成器已耗尽，这是最后一块内容
-            answer = accumulated_content
-            finish = True
-            # 3. 清理已结束的 stream
-            del ongoing_streams[stream_id]
+        answer = task_data["response"]
+        status = task_data["status"]
+        finish = status == "completed" or status == "error"
         return finish,answer
 
     def is_task_finish(self, stream_id):
@@ -162,8 +198,8 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
         # 询问大模型产生回复
         llm = DifyLLM()
         stream_id = llm.invoke(req_msg.from_user.user_id,content)
-        finish,answer = llm.get_answer(stream_id)
-        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=finish, content=answer))
+        # finish,answer = llm.get_answer(stream_id)
+        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=False, content=""))
 
     elif (req_msg.msg_type == 'stream'): 
         stream_id = req_msg.stream_id
