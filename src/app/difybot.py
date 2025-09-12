@@ -49,15 +49,21 @@ def run_dify_stream_and_store(conversation_id: str, query: str, user_id: str):
         "user": user_id,
         "response_mode": "streaming",
     }
-    
+
     try:
-        # 循环调用Dify的流式接口
-        for chunk in  requests.post(DIFY_API_URL, headers=headers, json=payload, stream=True):
-            if chunk.event == "agent_message" or chunk.event == "message":
-                # 使用锁来安全地更新共享字典
-                with store_lock:
-                    conversations_store[conversation_id]["response"] += chunk.answer
-        
+        response = requests.post(DIFY_API_URL, headers=headers, json=payload, stream=True)
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith('data:'):
+                    try:
+                        data = json.loads(decoded_line[5:])
+                        if data['event'] == 'message':
+                            with store_lock:
+                                conversations_store[conversation_id]["response"] += data['answer']
+                    except (json.JSONDecodeError, KeyError):
+                        continue
         # Dify流结束，更新最终状态
         with store_lock:
             conversations_store[conversation_id]["status"] = "completed"
