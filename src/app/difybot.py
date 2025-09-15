@@ -217,15 +217,16 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
         # 询问大模型产生回复
         llm = DifyLLM()
         stream_id = llm.invoke(req_msg.from_user.user_id,content)
-        # finish,answer = llm.get_answer(stream_id)
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=False, content=""))
-
     elif (req_msg.msg_type == 'stream'): 
         stream_id = req_msg.stream_id
         llm = DifyLLM()
         finish,answer = llm.get_answer(stream_id)
-
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=finish, content=answer))
+    elif (req_msg.msg_type == 'image'):
+        info = "收到图片消息，" + req_msg.image_url
+        print(info)
+        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=True, content="不支持的消息类型"))
     else:
         stream_id = _generate_random_string(10)
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=True, content="不支持的消息类型"))
