@@ -59,7 +59,7 @@ class ImageReqMsg(ReqMsg):
     def __init__(self, json_object):
         super().__init__(json_object)
         self.msg_type = 'image'
-        self.image_url = json_object.get('image').get('imageurl')
+        self.image_url = json_object.get('image').get('url')
 
 class MixedMessageReqMsg(ReqMsg):
     def __init__(self, json_object):
@@ -109,6 +109,6 @@ class SimpleTextMsg(object):
 class SimpleImageMsg(object):
     def __init__(self, json_object):
         self.msg_type = 'image'
-        self.image_url = json_object.get('image').get('imageurl')
+        self.image_url = json_object.get('image').get('url')
 
 

@@ -224,9 +224,9 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
         finish,answer = llm.get_answer(stream_id)
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=finish, content=answer))
     elif (req_msg.msg_type == 'image'):
-        info = "收到图片消息，" + req_msg.image_url
+        info = "receive an image:" + req_msg.image_url
         print(info)
-        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=True, content="不支持的消息类型"))
+        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=True, content=info))
     else:
         stream_id = _generate_random_string(10)
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=True, content="不支持的消息类型"))
