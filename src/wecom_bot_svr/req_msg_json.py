@@ -61,6 +61,27 @@ class ImageReqMsg(ReqMsg):
         self.msg_type = 'image'
         self.image_url = json_object.get('image').get('imageurl')
 
+class MixedMessageReqMsg(ReqMsg):
+    def __init__(self, json_object):
+        super().__init__(json_object)
+        self.msg_type = 'mixed'
+        self.msg_items = []
+        for e in json_object.get('mixed').get('msg_item'):
+            if e.get('msgtype') == 'text':
+                self.msg_items.append(SimpleTextMsg(e))
+            elif e.get('msgtype') == 'image':
+                self.msg_items.append(SimpleImageMsg(e))
+            else:
+                raise Exception("unknown msg type")
+
+class StreamReqMsg(ReqMsg):
+    def __init__(self, json_object):
+        super().__init__(json_object)
+        self.msg_type = 'stream'
+        self.stream_id = json_object.get('stream').get('id')
+
+
+
 
 class AttachmentAction(object):
     def __init__(self, name, value, type_):
@@ -91,21 +112,3 @@ class SimpleImageMsg(object):
         self.image_url = json_object.get('image').get('imageurl')
 
 
-class MixedMessageReqMsg(ReqMsg):
-    def __init__(self, json_object):
-        super().__init__(json_object)
-        self.msg_type = 'mixed'
-        self.msg_items = []
-        for e in json_object.get('mixedmessage'):
-            if e.get('msgtype') == 'text':
-                self.msg_items.append(SimpleTextMsg(e))
-            elif e.get('msgtype') == 'image':
-                self.msg_items.append(SimpleImageMsg(e))
-            else:
-                raise Exception("unknown msg type")
-
-class StreamReqMsg(ReqMsg):
-    def __init__(self, json_object):
-        super().__init__(json_object)
-        self.msg_type = 'stream'
-        self.stream_id = json_object.get('stream').get('id')

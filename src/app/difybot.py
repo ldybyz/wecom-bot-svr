@@ -201,6 +201,10 @@ def help_md():
     return """### Help 列表
 """
 
+def welcomMsg(req_msg):
+    msg = "您好，我是宁波华测小甬，专门为您解答与宁波化学检测能力相关的问题。在下方输入框中输入问题即可开始对话啦！"
+    return RspTextMsg(text=TextContent(content= msg))
+
 def _generate_random_string(length):
     letters = string.ascii_letters + string.digits
     return ''.join(random.choice(letters) for _ in range(length))
@@ -229,10 +233,13 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
 
 
 def event_handler(req_msg):
-    if req_msg.event_type == 'add_to_chat':  # 入群事件处理
+    if req_msg.event_type == 'add_to_chat':  # 入群事件处理，文档未找到该事件
         # ret.content = f'msg_type: {req_msg.msg_type}\n群会话ID: {req_msg.chat_id}\n查询用法请回复: help'
-        return RspTextMsg(text=TextContent(content= f'msg_type: {req_msg.msg_type}\n群会话ID: {req_msg.chat_id}\n查询用法请回复: help')) 
-    return RspTextMsg(text=TextContent(content= req_msg.event_type))
+        return RspTextMsg(text=TextContent(content= f'msg_type: {req_msg.msg_type}\n群会话ID: {req_msg.chat_id}\n查询用法请回复: help'))
+    elif req_msg.event_type == 'enter_chat':  # 进入会话事件
+       return welcomMsg(req_msg)
+    else:
+        return RspTextMsg(text=TextContent(content= req_msg.event_type))
 
 
 def main():
