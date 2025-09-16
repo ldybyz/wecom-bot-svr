@@ -417,7 +417,7 @@ class WecomBotServer(object):
                 f_out.write(save_path)
             
             print(f"文件成功解密并保存到: {save_path}")
-            return True, save_path
+            return True, file_name
             
         except requests.exceptions.RequestException as e:
             error_msg = f"图片下载失败 : {str(e)}"
