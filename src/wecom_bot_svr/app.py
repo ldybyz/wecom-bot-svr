@@ -176,9 +176,11 @@ class WecomBotServer(object):
 
             # 图片消息类型
             if msg.msg_type == 'image':
-                local_file_name = self.download_image(msg.image_url)
-                decrypt_file_name = f"decrypt_{local_file_name}"
-                decrypt_filed = self.decrypt_file(local_file_name, decrypt_file_name)
+                #local_file_name = self.download_image(msg.image_url)
+                #decrypt_file_name = f"decrypt_{local_file_name}"
+                #decrypt_filed = self.decrypt_file(local_file_name, decrypt_file_name)
+
+                decrypt_filed,decrypt_file_name = self.save_image(msg.image_url)
                 if decrypt_filed:
                     msg.local_file_name = decrypt_file_name
                     print("local_file_name:" +  msg.local_file_name)
@@ -189,9 +191,10 @@ class WecomBotServer(object):
             if msg.msg_type == 'mixed':
                 for item in msg.msg_items:
                     if item.msg_type == 'image':
-                        local_file_name = self.download_image(item.image_url)
-                        decrypt_file_name = f"decrypt_{local_file_name}"
-                        decrypt_filed = self.decrypt_file(local_file_name, decrypt_file_name)
+                        # local_file_name = self.download_image(item.image_url)
+                        # decrypt_file_name = f"decrypt_{local_file_name}"
+                        #decrypt_filed = self.decrypt_file(local_file_name, decrypt_file_name)
+                        decrypt_filed,decrypt_file_name = self.save_image(item.image_url)
                         if decrypt_filed:
                             item.local_file_name = decrypt_file_name
                             print("local_file_name:" +  msg.local_file_name)
@@ -371,3 +374,62 @@ class WecomBotServer(object):
         except Exception as e:
             print(f"发生未知错误: {e}")
             return False
+
+    def save_image(self,image_url):
+        try:
+            parsed_url = urlparse(image_url)
+            file_name = os.path.basename(parsed_url.path)
+            if not file_name:
+                # 如果URL路径中没有文件名，则使用一个默认名称或基于URL生成
+                file_name = f"{str(uuid.uuid4())}.jpg"
+            else: 
+                file_name = f"{str(uuid.uuid4())}_{file_name}"
+            save_path = os.path.join(self.file_storage_path, file_name)
+            # 1. 下载加密图片
+            print(f"开始下载加密图片:{image_url}", )
+            response = requests.get(image_url, timeout=60)
+            response.raise_for_status()
+            encrypted_data = response.content
+
+            wx_cpt = self.get_crypto_obj()
+            aes_key = wx_cpt.key
+            if not aes_key:
+                raise ValueError("AES密钥不能为空")
+            
+            if len(aes_key) != 32:
+                raise ValueError("无效的AES密钥长度: 应为32字节")
+                
+            iv = aes_key[:16]  # 初始向量为密钥前16字节
+            
+            # 3. 解密图片数据
+            cipher = AES.new(aes_key, AES.MODE_CBC, iv)
+            decrypted_data = cipher.decrypt(encrypted_data)
+            
+            # 4. 去除PKCS#7填充 (Python 3兼容写法)
+            pad_len = decrypted_data[-1]  # 直接获取最后一个字节的整数值
+            if pad_len > 32:  # AES-256块大小为32字节
+                raise ValueError("无效的填充长度 (大于32字节)")
+                
+            decrypted_data = decrypted_data[:-pad_len]
+            
+            # 5. 将解密后的数据写入新文件
+            with open(save_path, 'wb') as f_out:
+                f_out.write(save_path)
+            
+            print(f"文件成功解密并保存到: {save_path}")
+            return True, save_path
+            
+        except requests.exceptions.RequestException as e:
+            error_msg = f"图片下载失败 : {str(e)}"
+            print(error_msg)
+            return False, error_msg
+            
+        except ValueError as e:
+            error_msg = f"参数错误 : {str(e)}"
+            print(error_msg)
+            return False, error_msg
+            
+        except Exception as e:
+            error_msg = f"图片处理异常 : {str(e)}"
+            print(error_msg)
+            return False, error_msg
