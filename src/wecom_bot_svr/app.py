@@ -4,12 +4,17 @@ import os
 import xml.etree.cElementTree as ET
 
 import requests
-from flask import Flask, request
+from flask import Flask, request,send_from_directory 
 from .WXBizJsonMsgCrypt import WXBizJsonMsgCrypt
 # from .req_msg import ReqMsg
 from .req_msg_json import ReqMsg
 import json
 from pydantic import BaseModel, Field, TypeAdapter
+from urllib.parse import urlparse, parse_qs, unquote
+import uuid
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
+
 
 # 参考文档：https://km.woa.com/articles/show/387107?kmref=search&from_page=1&no=2#10128
 
@@ -33,7 +38,7 @@ def _encode_rsp(wx_cpt, rsp_str):
 
 class WecomBotServer(object):
     def __init__(self, name, host, port, path, token=None, aes_key=None, corp_id=None, bot_key=None,
-                 active_msg_path="/active_send"):
+                 active_msg_path="/active_send",file_storage_dir="file_storage"):
         """
         :param name:
         :param host:
@@ -59,6 +64,10 @@ class WecomBotServer(object):
         self._error_handler = None
         self.name = name
         self.logger = logging.getLogger()
+        self.file_storage_dir = file_storage_dir
+
+        self.file_storage_path = os.path.abspath(self.file_storage_dir)
+        os.makedirs(self.file_storage_path, exist_ok=True)
 
     def set_message_handler(self, handler):
         self._message_handler = handler
@@ -80,6 +89,7 @@ class WecomBotServer(object):
         self._app.get(self.path)(self.handle_bot_call_get)
         self._app.post(self.path)(self.handle_bot_call_post)
         self._app.post(self.active_msg_path)(self.handle_active_send)
+        self._app.get(f"{self.path}/{self.file_storage_dir}/<path:filename>")(self.serve_file)
         self._app.run(host=self.host, port=self.port)
 
     def handle_active_send(self):
@@ -163,6 +173,31 @@ class WecomBotServer(object):
         else:  # 消息
             if msg.msg_type == 'text' and msg.chat_type == 'group':
                 msg.content = msg.content.replace(f"@{self.name}", "")
+
+            # 图片消息类型
+            if msg.msg_type == 'image':
+                local_file_name = self.download_image(msg.image_url)
+                decrypt_file_name = f"decrypt_{local_file_name}"
+                decrypt_filed = self.decrypt_file(local_file_name, decrypt_file_name)
+                if decrypt_filed:
+                    msg.local_file_name = decrypt_file_name
+                    print("local_file_name:" +  msg.local_file_name)
+                else:
+                    print("下载图片失败:" + msg.image_url)
+
+            # 混合消息类型
+            if msg.msg_type == 'mixed':
+                for item in msg.msg_items:
+                    if item.msg_type == 'image':
+                        local_file_name = self.download_image(item.image_url)
+                        decrypt_file_name = f"decrypt_{local_file_name}"
+                        decrypt_filed = self.decrypt_file(local_file_name, decrypt_file_name)
+                        if decrypt_filed:
+                            item.local_file_name = decrypt_file_name
+                            print("local_file_name:" +  msg.local_file_name)
+                        else:
+                            print("下载图片失败:" + item.image_url)
+
             if len(inspect.signature(self._message_handler).parameters) == 2:
                 rsp_msg = self._message_handler(msg, self)
             else:  # 兼容旧版本
@@ -245,3 +280,92 @@ class WecomBotServer(object):
                 "picurl": pic_url
             }
         ]}})
+
+    def serve_file(self, filename):
+        self.logger.info(f"Attempting to serve file: {filename} from {self.file_storage_path}")
+        try:
+            # 使用 send_from_directory 来安全地提供文件，它能防止目录遍历攻击
+            return send_from_directory(self.file_storage_path, filename)
+        except Exception as e:
+            self.logger.error(f"Error serving file {filename}: {e}")
+            return "File not found", 404
+        
+    def download_image(self, url):
+        try:
+            # 从URL中解析出文件名
+            parsed_url = urlparse(url)
+            file_name = os.path.basename(parsed_url.path)
+            if not file_name:
+                # 如果URL路径中没有文件名，则使用一个默认名称或基于URL生成
+                file_name = f"{uuid.uuid4()}.jpg"
+            save_path = os.path.join(self.file_storage_path, file_name)
+
+            # 发送请求
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            response = requests.get(url, headers=headers, stream=True, timeout=60)
+            
+            # 检查响应状态
+            response.raise_for_status()  # 如果状态码不是200-299，会抛出HTTPError异常
+
+            # 写入文件
+            with open(save_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            print(f"图片成功下载到: {save_path}")
+            return file_name
+
+        except requests.exceptions.RequestException as e:
+            print(f"下载失败: {e}")
+            return None
+        except Exception as e:
+            print(f"发生未知错误: {e}")
+            return None
+
+
+    def decrypt_file(self,encrypted_file_name, decrypted_file_name):
+        encrypted_file_path = os.path.join(self.file_storage_path, encrypted_file_name)
+        decrypted_file_path = os.path.join(self.file_storage_path, decrypted_file_name)
+        wx_cpt = self.get_crypto_obj()
+        key = wx_cpt.key
+        iv =  key[:16]
+        # ... (代码同上) ...
+        # 确保 key 是32字节，iv 是16字节
+        if len(key) != 32:
+            print("错误: 密钥长度必须是 32 字节。")
+            return False
+        if len(iv) != 16:
+            print("错误: IV 长度必须是 16 字节。")
+            return False
+        try:
+            # 1. 以二进制模式读取加密文件
+            with open(encrypted_file_path, 'rb') as f_in:
+                ciphertext = f_in.read()
+
+            # 2. 创建 AES 密码器
+            cipher = AES.new(key, AES.MODE_CBC, iv)
+
+            # 3. 解密数据
+            decrypted_data_padded = cipher.decrypt(ciphertext)
+            
+            # 4. 去除填充 (Padding)
+            decrypted_data = unpad(decrypted_data_padded, AES.block_size)
+            
+            # 5. 将解密后的数据写入新文件
+            with open(decrypted_file_path, 'wb') as f_out:
+                f_out.write(decrypted_data)
+            
+            print(f"文件成功解密并保存到: {decrypted_file_path}")
+            return True
+
+        except ValueError as e:
+            print(f"解密失败: {e}. 请检查密钥、IV和文件完整性。")
+            return False
+        except FileNotFoundError:
+            print(f"错误: 加密文件未找到于 {encrypted_file_path}")
+            return False
+        except Exception as e:
+            print(f"发生未知错误: {e}")
+            return False

@@ -60,6 +60,7 @@ class ImageReqMsg(ReqMsg):
         super().__init__(json_object)
         self.msg_type = 'image'
         self.image_url = json_object.get('image').get('url')
+        self.local_file_name = ""  # 本地存储的文件名
 
 class MixedMessageReqMsg(ReqMsg):
     def __init__(self, json_object):
@@ -110,5 +111,6 @@ class SimpleImageMsg(object):
     def __init__(self, json_object):
         self.msg_type = 'image'
         self.image_url = json_object.get('image').get('url')
+        self.local_file_name = ""  # 本地存储的文件名
 
 

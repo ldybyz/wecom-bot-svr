@@ -33,7 +33,7 @@ conversations_store = TTLCache(maxsize=1024, ttl=600)  # 10分钟过期
 
 #conversations_store = {}
 
-def run_dify_stream_and_store(conversation_id: str, query: str, user_id: str):
+def run_dify_stream_and_store(conversation_id: str, query: str, user_id: str,files: list = None):
     """
     这个函数在独立的后台线程中运行。
     它调用Dify的流式API，并线程安全地将累加结果存入 conversations_store。
@@ -57,6 +57,7 @@ def run_dify_stream_and_store(conversation_id: str, query: str, user_id: str):
         "query": query,
         "user": user_id,
         "response_mode": "streaming",
+        "files": files if files else []
     }
 
     try:
@@ -165,12 +166,12 @@ class DifyLLM():
                         continue
 
     
-    def invoke(self, user_id, question):
+    def invoke(self, user_id, question, files: list = None):
         stream_id = _generate_random_string(10) # 生成一个随机字符串作为任务ID
         # 创建并启动后台线程
         thread = threading.Thread(
             target=run_dify_stream_and_store,
-            args=(stream_id, question, user_id)
+            args=(stream_id, question, user_id,files)
         )
         thread.daemon = True  # 允许主程序退出而无需等待此线程结束
         thread.start()
@@ -216,7 +217,7 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
         content = req_msg.content.strip()
         # 询问大模型产生回复
         llm = DifyLLM()
-        stream_id = llm.invoke(req_msg.from_user.user_id,content)
+        stream_id = llm.invoke(req_msg.from_user.user_id,content,[])
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=False, content=""))
     elif (req_msg.msg_type == 'stream'): 
         stream_id = req_msg.stream_id
@@ -257,7 +258,7 @@ def main():
     # 这里要跟机器人名字一样，用于切分群组聊天中的@消息
     bot_name = os.getenv('bot_name')
     server = WecomBotServer(bot_name, host, port, path='/wecom_bot', token=token, aes_key=aes_key, corp_id=corp_id,
-                            bot_key=bot_key)
+                            bot_key=bot_key,active_msg_path='/active_send',file_storage_dir='file_storage')
 
     server.set_message_handler(msg_handler)
     server.set_event_handler(event_handler)
