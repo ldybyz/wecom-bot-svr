@@ -297,7 +297,7 @@ class WecomBotServer(object):
             file_name = os.path.basename(parsed_url.path)
             if not file_name:
                 # 如果URL路径中没有文件名，则使用一个默认名称或基于URL生成
-                file_name = f"{uuid.uuid4()}.jpg"
+                file_name = f"{str(uuid.uuid4())}.jpg"
             save_path = os.path.join(self.file_storage_path, file_name)
 
             # 发送请求

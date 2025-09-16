@@ -17,6 +17,8 @@ import requests
 import threading
 from cachetools import TTLCache
 
+import uuid
+
 # 加载环境变量
 load_dotenv()
 
@@ -27,6 +29,7 @@ ongoing_streams = {}
 
 DIFY_API_KEY = os.getenv('dify_api_key')
 DIFY_API_URL = os.getenv('dify_api_url')
+FILE_URL_PREFIX = os.getenv('file_url_prefix',default='https://lims-dify.cticert.com/wecom_test/wecom_bot/file_storage/')  #
 store_lock = threading.Lock()
 
 conversations_store = TTLCache(maxsize=1024, ttl=600)  # 10分钟过期
@@ -207,8 +210,9 @@ def welcomMsg(req_msg):
     return RspTextMsg(text=TextContent(content= msg))
 
 def _generate_random_string(length):
-    letters = string.ascii_letters + string.digits
-    return ''.join(random.choice(letters) for _ in range(length))
+    # letters = string.ascii_letters + string.digits
+    #return ''.join(random.choice(letters) for _ in range(length))
+    return str(uuid.uuid4())
 
 def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
     # @机器人 help 打印帮助信息
@@ -227,7 +231,20 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
     elif (req_msg.msg_type == 'image'):
         info = "receive an image:" + req_msg.image_url
         print(info)
-        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=True, content=info))
+        stream_id = _generate_random_string(10)
+        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=True, content="不能只发送图片，请输入文字描述和图片一起发送"))
+    elif (req_msg.msg_type == 'mixed'):
+        content = ""
+        files = []
+        for item in req_msg.msg_items:
+            if item.msg_type == 'text':
+                content += item.content
+            if item.msg_type == 'image':
+                fileItem ={"type": "image","transfer_method": "remote_url","url": FILE_URL_PREFIX + item.local_file_name}
+                files.append(fileItem)
+        llm = DifyLLM()
+        stream_id = llm.invoke(req_msg.from_user.user_id,content,files)
+        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=False, content=""))
     else:
         stream_id = _generate_random_string(10)
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=True, content="不支持的消息类型"))
