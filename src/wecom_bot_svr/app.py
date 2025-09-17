@@ -197,7 +197,7 @@ class WecomBotServer(object):
                         decrypt_filed,decrypt_file_name = self.save_image(item.image_url)
                         if decrypt_filed:
                             item.local_file_name = decrypt_file_name
-                            print("local_file_name:" +  msg.local_file_name)
+                            print("local_file_name:" +  item.local_file_name)
                         else:
                             print("下载图片失败:" + item.image_url)
 
