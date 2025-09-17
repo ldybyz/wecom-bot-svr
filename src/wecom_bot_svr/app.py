@@ -285,10 +285,10 @@ class WecomBotServer(object):
         ]}})
 
     def serve_file(self, filename):
-        self.logger.info(f"Attempting to serve file: {filename} from {self.file_storage_path}")
+        self.logger.info(f"Attempting to serve file: {filename} from {self.file_storage_dir}")
         try:
             # 使用 send_from_directory 来安全地提供文件，它能防止目录遍历攻击
-            return send_from_directory(self.file_storage_path, filename)
+            return send_from_directory(self.file_storage_dir, filename)
         except Exception as e:
             self.logger.error(f"Error serving file {filename}: {e}")
             return "File not found", 404
