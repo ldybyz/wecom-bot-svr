@@ -414,7 +414,7 @@ class WecomBotServer(object):
             
             # 5. 将解密后的数据写入新文件
             with open(save_path, 'wb') as f_out:
-                f_out.write(save_path)
+                f_out.write(decrypted_data)
             
             print(f"文件成功解密并保存到: {save_path}")
             return True, file_name
