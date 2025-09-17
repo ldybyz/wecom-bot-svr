@@ -14,6 +14,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 import uuid
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
+import re
 
 
 # 参考文档：https://km.woa.com/articles/show/387107?kmref=search&from_page=1&no=2#10128
@@ -172,7 +173,7 @@ class WecomBotServer(object):
             rsp_msg = self._event_handler(msg)
         else:  # 消息
             if msg.msg_type == 'text' and msg.chat_type == 'group':
-                msg.content = msg.content.replace(f"@{self.name}", "")
+                msg.content = self.remove_at_mentions(msg.content)
 
             # 图片消息类型
             if msg.msg_type == 'image':
@@ -201,7 +202,7 @@ class WecomBotServer(object):
                         else:
                             print("下载图片失败:" + item.image_url)
                     if item.msg_type == 'text':
-                        item.content = item.content.replace(f"@{self.name}", "")
+                        item.content = self.remove_at_mentions(item.content)
 
             if len(inspect.signature(self._message_handler).parameters) == 2:
                 rsp_msg = self._message_handler(msg, self)
@@ -437,3 +438,8 @@ class WecomBotServer(object):
             error_msg = f"图片处理异常 : {str(e)}"
             print(error_msg)
             return False, error_msg
+        
+        
+    def remove_at_mentions(self,text):
+        pattern = r'@\S+\s*'
+        return re.sub(pattern, '', text).strip()
