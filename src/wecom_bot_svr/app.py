@@ -200,6 +200,8 @@ class WecomBotServer(object):
                             print("local_file_name:" +  item.local_file_name)
                         else:
                             print("下载图片失败:" + item.image_url)
+                    if item.msg_type == 'text':
+                        item.content = item.content.replace(f"@{self.name}", "")
 
             if len(inspect.signature(self._message_handler).parameters) == 2:
                 rsp_msg = self._message_handler(msg, self)
