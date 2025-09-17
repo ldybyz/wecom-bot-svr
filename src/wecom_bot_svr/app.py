@@ -377,15 +377,6 @@ class WecomBotServer(object):
 
     def save_image(self,image_url):
         try:
-            image_url = unquote(image_url)
-            parsed_url = urlparse(image_url)
-            file_name = os.path.basename(parsed_url.path)
-            if not file_name:
-                # 如果URL路径中没有文件名，则使用一个默认名称或基于URL生成
-                file_name = f"{str(uuid.uuid4())}.jpg"
-            else: 
-                file_name = f"{str(uuid.uuid4())}_{file_name}"
-            save_path = os.path.join(self.file_storage_path, file_name)
             # 1. 下载加密图片
             print(f"开始下载加密图片:{image_url}", )
             response = requests.get(image_url, timeout=60)
@@ -413,6 +404,16 @@ class WecomBotServer(object):
                 
             decrypted_data = decrypted_data[:-pad_len]
             
+
+            decode_image_url = unquote(image_url)
+            parsed_url = urlparse(decode_image_url)
+            file_name = os.path.basename(parsed_url.path)
+            if not file_name:
+                # 如果URL路径中没有文件名，则使用一个默认名称或基于URL生成
+                file_name = f"{str(uuid.uuid4())}.jpg"
+            else: 
+                file_name = f"{str(uuid.uuid4())}_{file_name}"
+            save_path = os.path.join(self.file_storage_path, file_name)
             # 5. 将解密后的数据写入新文件
             with open(save_path, 'wb') as f_out:
                 f_out.write(decrypted_data)
