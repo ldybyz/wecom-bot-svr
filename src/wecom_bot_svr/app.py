@@ -377,6 +377,7 @@ class WecomBotServer(object):
 
     def save_image(self,image_url):
         try:
+            image_url = unquote(image_url)
             parsed_url = urlparse(image_url)
             file_name = os.path.basename(parsed_url.path)
             if not file_name:
