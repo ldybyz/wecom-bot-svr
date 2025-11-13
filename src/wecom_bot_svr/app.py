@@ -416,6 +416,13 @@ class WecomBotServer(object):
                 file_name = f"{str(uuid.uuid4())}.jpg"
             else: 
                 file_name = f"{str(uuid.uuid4())}_{file_name}"
+
+            root, ext = os.path.splitext(file_name)
+
+            # 检查 ext 是否为空字符串。如果为空，说明没有后缀。
+            if not ext:
+                file_name = file_name + '.jpg'
+
             save_path = os.path.join(self.file_storage_path, file_name)
             # 5. 将解密后的数据写入新文件
             with open(save_path, 'wb') as f_out:
