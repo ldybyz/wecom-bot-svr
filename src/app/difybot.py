@@ -234,7 +234,9 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=finish, content=answer))
     elif (req_msg.msg_type == 'image'):
         content = DEFAULT_IMAGE_MSG
-        files = [FILE_URL_PREFIX + req_msg.local_file_name]
+        files = []
+        fileItem ={"type": "image","transfer_method": "remote_url","url": FILE_URL_PREFIX + req_msg.local_file_name}
+        files.append(fileItem)
         llm = DifyLLM()
         stream_id = llm.invoke(req_msg.from_user.user_id,content,files)
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=False, content=""))
