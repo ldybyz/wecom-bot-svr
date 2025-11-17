@@ -31,6 +31,8 @@ DIFY_API_KEY = os.getenv('dify_api_key')
 DIFY_API_URL = os.getenv('dify_api_url')
 FILE_URL_PREFIX = os.getenv('file_url_prefix',default='https://lims-dify.cticert.com/wecom_test/wecom_bot/file_storage/')  #
 DEFAULT_MSG = os.getenv('default_msg',default="您好，我是宁波华测小甬，专门为您解答与宁波化学检测能力相关的问题。在下方输入框中输入问题即可开始对话啦！")
+WELCOM_MSG = os.getenv('welcome_msg',default="您好，我是宁波华测小甬，专门为您解答与宁波化学检测能力相关的问题。在下方输入框中输入问题即可开始对话啦！")
+DEFAULT_IMAGE_MSG = os.getenv('default_image_msg',default="咨询一下：")
 store_lock = threading.Lock()
 
 conversations_store = TTLCache(maxsize=1024, ttl=600)  # 10分钟过期
@@ -207,7 +209,7 @@ def help_md():
 """
 
 def welcomMsg(req_msg):
-    msg = DEFAULT_MSG
+    msg = WELCOM_MSG
     return RspTextMsg(text=TextContent(content= msg))
 
 def _generate_random_string(length):
@@ -231,10 +233,11 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
         finish,answer = llm.get_answer(stream_id)
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=finish, content=answer))
     elif (req_msg.msg_type == 'image'):
-        info = "receive an image:" + req_msg.image_url
-        print(info)
-        stream_id = _generate_random_string(10)
-        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=True, content="不能只发送图片，请输入文字描述和图片一起发送"))
+        content = DEFAULT_IMAGE_MSG
+        files = [req_msg.image_url]
+        llm = DifyLLM()
+        stream_id = llm.invoke(req_msg.from_user.user_id,content,files)
+        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=False, content=""))
     elif (req_msg.msg_type == 'mixed'):
         content = ""
         files = []
@@ -244,10 +247,11 @@ def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
             if item.msg_type == 'image':
                 fileItem ={"type": "image","transfer_method": "remote_url","url": FILE_URL_PREFIX + item.local_file_name}
                 files.append(fileItem)
-        if content:
-            llm = DifyLLM()
-            stream_id = llm.invoke(req_msg.from_user.user_id,content,files)
-            ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=False, content=""))
+        if not content:
+            content = DEFAULT_IMAGE_MSG
+        llm = DifyLLM()
+        stream_id = llm.invoke(req_msg.from_user.user_id,content,files)
+        ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=False, content=""))
     else:
         stream_id = _generate_random_string(10)
         ret = RspStreamTextMsg(stream=StreamTextContent(id=stream_id, finish=True, content="不支持的消息类型"))
