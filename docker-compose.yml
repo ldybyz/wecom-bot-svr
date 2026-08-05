@@ -1,0 +1,40 @@
+# 同一 Dockerfile 构建镜像，用 command 区分两种 bot
+# 使用前请复制并填写环境变量文件：
+#   cp difybot.env.example difybot.env
+#   cp pdfbot.env.example pdfbot.env
+#
+# 启动：
+#   docker compose up -d --build
+# 只启动 PDF 机器人：
+#   docker compose up -d --build pdfbot
+
+services:
+  difybot:
+    build: .
+    image: wecom-bot-svr:local
+    container_name: wecom-difybot
+    # 不写 command，使用 Dockerfile 默认：difybot.py
+    env_file:
+      - difybot.env
+    ports:
+      - "5001:5001"
+    volumes:
+      - difybot_files:/app/file_storage
+    restart: unless-stopped
+
+  pdfbot:
+    build: .
+    image: wecom-bot-svr:local
+    container_name: wecom-pdfbot
+    command: ["uv", "run", "/app/src/app/pdfbot.py"]
+    env_file:
+      - pdfbot.env
+    ports:
+      - "5002:5001"
+    volumes:
+      - pdfbot_files:/app/file_storage
+    restart: unless-stopped
+
+volumes:
+  difybot_files:
+  pdfbot_files:

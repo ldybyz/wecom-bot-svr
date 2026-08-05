@@ -8,13 +8,32 @@ from flask import Flask, request,send_from_directory
 from .WXBizJsonMsgCrypt import WXBizJsonMsgCrypt
 # from .req_msg import ReqMsg
 from .req_msg_json import ReqMsg
+from .rsp_msg_json import RspTextMsg, TextContent
 import json
 from pydantic import BaseModel, Field, TypeAdapter
 from urllib.parse import urlparse, parse_qs, unquote
 import uuid
+import io
+import zipfile
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 import re
+
+
+def _detect_office_ext(data: bytes):
+    """docx/xlsx/pptx 均为 zip 容器，按内部目录结构区分；无法识别返回 None。"""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            names = zf.namelist()
+    except Exception:
+        return None
+    if any(n.startswith("word/") for n in names):
+        return ".docx"
+    if any(n.startswith("xl/") for n in names):
+        return ".xlsx"
+    if any(n.startswith("ppt/") for n in names):
+        return ".pptx"
+    return None
 
 
 # 参考文档：https://km.woa.com/articles/show/387107?kmref=search&from_page=1&no=2#10128
@@ -169,7 +188,9 @@ class WecomBotServer(object):
         # xml_tree = ET.fromstring(msg)
         json_object = json.loads(msg)
         msg = ReqMsg.create_msg(json_object)
-        if msg.msg_type == 'event':
+        if msg is None:
+            rsp_msg = RspTextMsg(text=TextContent(content="不支持该消息类型"))
+        elif msg.msg_type == 'event':
             rsp_msg = self._event_handler(msg)
         else:  # 消息
             if msg.msg_type == 'text' and msg.chat_type == 'group':
@@ -177,28 +198,32 @@ class WecomBotServer(object):
 
             # 图片消息类型
             if msg.msg_type == 'image':
-                #local_file_name = self.download_image(msg.image_url)
-                #decrypt_file_name = f"decrypt_{local_file_name}"
-                #decrypt_filed = self.decrypt_file(local_file_name, decrypt_file_name)
-
-                decrypt_filed,decrypt_file_name = self.save_image(msg.image_url)
+                decrypt_filed, decrypt_file_name = self.save_image(msg.image_url)
                 if decrypt_filed:
                     msg.local_file_name = decrypt_file_name
-                    print("local_file_name:" +  msg.local_file_name)
+                    print("local_file_name:" + msg.local_file_name)
                 else:
                     print("下载图片失败:" + msg.image_url)
+
+            # 文件消息类型
+            if msg.msg_type == 'file':
+                decrypt_filed, decrypt_file_name = self.save_encrypted_file(
+                    msg.file_url, default_ext=".bin"
+                )
+                if decrypt_filed:
+                    msg.local_file_name = decrypt_file_name
+                    print("local_file_name:" + msg.local_file_name)
+                else:
+                    print("下载文件失败:" + msg.file_url)
 
             # 混合消息类型
             if msg.msg_type == 'mixed':
                 for item in msg.msg_items:
                     if item.msg_type == 'image':
-                        # local_file_name = self.download_image(item.image_url)
-                        # decrypt_file_name = f"decrypt_{local_file_name}"
-                        #decrypt_filed = self.decrypt_file(local_file_name, decrypt_file_name)
-                        decrypt_filed,decrypt_file_name = self.save_image(item.image_url)
+                        decrypt_filed, decrypt_file_name = self.save_image(item.image_url)
                         if decrypt_filed:
                             item.local_file_name = decrypt_file_name
-                            print("local_file_name:" +  item.local_file_name)
+                            print("local_file_name:" + item.local_file_name)
                         else:
                             print("下载图片失败:" + item.image_url)
                     if item.msg_type == 'text':
@@ -378,11 +403,11 @@ class WecomBotServer(object):
             print(f"发生未知错误: {e}")
             return False
 
-    def save_image(self,image_url):
+    def save_encrypted_file(self, file_url, default_ext=".bin"):
+        """下载企业微信加密文件并 AES 解密后落盘。"""
         try:
-            # 1. 下载加密图片
-            print(f"开始下载加密图片:{image_url}", )
-            response = requests.get(image_url, timeout=60)
+            print(f"开始下载加密文件:{file_url}")
+            response = requests.get(file_url, timeout=60)
             response.raise_for_status()
             encrypted_data = response.content
 
@@ -390,63 +415,70 @@ class WecomBotServer(object):
             aes_key = wx_cpt.key
             if not aes_key:
                 raise ValueError("AES密钥不能为空")
-            
+
             if len(aes_key) != 32:
                 raise ValueError("无效的AES密钥长度: 应为32字节")
-                
-            iv = aes_key[:16]  # 初始向量为密钥前16字节
-            
-            # 3. 解密图片数据
+
+            iv = aes_key[:16]
             cipher = AES.new(aes_key, AES.MODE_CBC, iv)
             decrypted_data = cipher.decrypt(encrypted_data)
-            
-            # 4. 去除PKCS#7填充 (Python 3兼容写法)
-            pad_len = decrypted_data[-1]  # 直接获取最后一个字节的整数值
-            if pad_len > 32:  # AES-256块大小为32字节
-                raise ValueError("无效的填充长度 (大于32字节)")
-                
-            decrypted_data = decrypted_data[:-pad_len]
-            
 
-            decode_image_url = unquote(image_url)
-            parsed_url = urlparse(decode_image_url)
+            pad_len = decrypted_data[-1]
+            if pad_len > 32:
+                raise ValueError("无效的填充长度 (大于32字节)")
+
+            decrypted_data = decrypted_data[:-pad_len]
+
+            decode_file_url = unquote(file_url)
+            parsed_url = urlparse(decode_file_url)
             file_name = os.path.basename(parsed_url.path)
             if not file_name:
-                # 如果URL路径中没有文件名，则使用一个默认名称或基于URL生成
-                file_name = f"{str(uuid.uuid4())}.jpg"
-            else: 
+                file_name = f"{str(uuid.uuid4())}{default_ext}"
+            else:
                 file_name = f"{str(uuid.uuid4())}_{file_name}"
 
             root, ext = os.path.splitext(file_name)
-
-            # 检查 ext 是否为空字符串。如果为空，说明没有后缀。
             if not ext:
-                file_name = file_name + '.jpg'
+                file_name = file_name + default_ext
+
+            # 根据文件头纠正扩展名（如 PDF / docx）
+            if decrypted_data[:4] == b'%PDF' and not file_name.lower().endswith('.pdf'):
+                root, _ = os.path.splitext(file_name)
+                file_name = root + '.pdf'
+            elif (
+                decrypted_data[:4] == b'PK\x03\x04'
+                and not file_name.lower().endswith(('.docx', '.xlsx', '.pptx', '.zip'))
+            ):
+                office_ext = _detect_office_ext(decrypted_data)
+                if office_ext:
+                    root, _ = os.path.splitext(file_name)
+                    file_name = root + office_ext
 
             save_path = os.path.join(self.file_storage_path, file_name)
-            # 5. 将解密后的数据写入新文件
             with open(save_path, 'wb') as f_out:
                 f_out.write(decrypted_data)
-            
+
             print(f"文件成功解密并保存到: {save_path}")
             return True, file_name
-            
+
         except requests.exceptions.RequestException as e:
-            error_msg = f"图片下载失败 : {str(e)}"
+            error_msg = f"文件下载失败 : {str(e)}"
             print(error_msg)
             return False, error_msg
-            
+
         except ValueError as e:
             error_msg = f"参数错误 : {str(e)}"
             print(error_msg)
             return False, error_msg
-            
+
         except Exception as e:
-            error_msg = f"图片处理异常 : {str(e)}"
+            error_msg = f"文件处理异常 : {str(e)}"
             print(error_msg)
             return False, error_msg
-        
-        
-    def remove_at_mentions(self,text):
+
+    def save_image(self, image_url):
+        return self.save_encrypted_file(image_url, default_ext=".jpg")
+
+    def remove_at_mentions(self, text):
         pattern = r'@\S+\s*'
         return re.sub(pattern, '', text).strip()

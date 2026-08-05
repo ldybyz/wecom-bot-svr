@@ -36,6 +36,8 @@ class ReqMsg(object):
             return MixedMessageReqMsg(json_object)
         elif msg_type == 'stream':
             return StreamReqMsg(json_object)
+        elif msg_type == 'file':
+            return FileReqMsg(json_object)
         else:
             return None
 
@@ -61,6 +63,15 @@ class ImageReqMsg(ReqMsg):
         self.msg_type = 'image'
         self.image_url = json_object.get('image').get('url')
         self.local_file_name = ""  # 本地存储的文件名
+
+
+class FileReqMsg(ReqMsg):
+    def __init__(self, json_object):
+        super().__init__(json_object)
+        self.msg_type = 'file'
+        self.file_url = json_object.get('file').get('url')
+        self.local_file_name = ""  # 本地存储的文件名
+
 
 class MixedMessageReqMsg(ReqMsg):
     def __init__(self, json_object):
