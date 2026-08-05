@@ -17,6 +17,8 @@ class ReqMsg(object):
         self.chat_type = json_object.get('chattype')
         self.chat_id = json_object.get('chatid')
         self.webhook_url = json_object.get('webhookurl')
+        # 智能机器人主动回复消息的临时url（每条消息仅可调用一次，有效期1小时）
+        self.response_url = json_object.get('response_url')
         self.msg_id = json_object.get('msgid')
         self.aibot_id = json_object.get('aibotid')
         # GetChatInfoUrl
