@@ -173,6 +173,37 @@ def _resolve_chat_id(req_msg: ReqMsg) -> str:
     return req_msg.chat_id or (req_msg.from_user.user_id if req_msg.from_user else "")
 
 
+def _resolve_webhook_url(req_msg: ReqMsg) -> str:
+    return getattr(req_msg, "webhook_url", None) or ""
+
+
+def _push_text(server: WecomBotServer, webhook_url: str, chat_id: str, content: str):
+    """推送结果文本：优先用当前消息携带的 webhook_url（智能机器人回调模式），
+    失败或不可用时回退到全局 webhook key，并记录日志，绝不静默。"""
+    if webhook_url:
+        try:
+            resp = requests.post(
+                webhook_url,
+                json={"msgtype": "text", "text": {"content": content}},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("errcode") == 0:
+                logging.info("推送成功(webhook_url)")
+                return
+            logging.error("推送失败(webhook_url)，企业微信返回: %s", data)
+            return
+        except Exception:
+            logging.exception("推送异常(webhook_url)，回退全局 webhook key")
+
+    if not chat_id:
+        logging.error("推送失败：webhook_url 与 chat_id 均不可用，内容: %s", content)
+        return
+    result = server.send_text(chat_id, content)
+    logging.info("推送结果(全局webhook): %s", result)
+
+
 def _resolve_local_path(server: WecomBotServer, local_file_name: str) -> str:
     return os.path.join(server.file_storage_path, local_file_name)
 
@@ -194,13 +225,16 @@ def _run_import_and_store(stream_id: str, file_path: str, folderno: str):
             }
 
 
-def _run_import_and_push(server: WecomBotServer, chat_id: str, file_path: str, folderno: str):
+def _run_import_and_push(
+    server: WecomBotServer, webhook_url: str, chat_id: str, file_path: str, folderno: str
+):
     try:
         result = call_import_api(file_path, folderno)
-        server.send_text(chat_id, result)
     except Exception as e:
         logging.exception("委托单导入失败")
-        server.send_text(chat_id, f"{ANALYZE_FAILED_PREFIX}{e}")
+        result = f"{ANALYZE_FAILED_PREFIX}{e}"
+    logging.info("导入结果: %s", result)
+    _push_text(server, webhook_url, chat_id, result)
 
 
 def _submit(server: WecomBotServer, req_msg: ReqMsg, session_key: str, folderno: str, file_path: str):
@@ -219,11 +253,14 @@ def _submit(server: WecomBotServer, req_msg: ReqMsg, session_key: str, folderno:
 
     # 默认 async：先回执，后台导入后主动推送
     chat_id = _resolve_chat_id(req_msg)
-    if not chat_id:
-        return RspTextMsg(text=TextContent(content=f"{ANALYZE_FAILED_PREFIX}无法确定会话目标"))
+    webhook_url = _resolve_webhook_url(req_msg)
+    if not chat_id and not webhook_url:
+        return RspTextMsg(
+            text=TextContent(content=f"{ANALYZE_FAILED_PREFIX}无法确定会话目标")
+        )
     threading.Thread(
         target=_run_import_and_push,
-        args=(server, chat_id, file_path, folderno),
+        args=(server, webhook_url, chat_id, file_path, folderno),
         daemon=True,
     ).start()
     return RspTextMsg(text=TextContent(content=RECEIVED_MSG))
@@ -289,6 +326,14 @@ def _handle_file(req_msg: FileReqMsg, server: WecomBotServer):
 
 
 def msg_handler(req_msg: ReqMsg, server: WecomBotServer):
+    try:
+        return _msg_handler_impl(req_msg, server)
+    except Exception as e:
+        logging.exception("消息处理异常")
+        return RspTextMsg(text=TextContent(content=f"处理消息时发生异常：{e}"))
+
+
+def _msg_handler_impl(req_msg: ReqMsg, server: WecomBotServer):
     # 流式轮询
     if req_msg.msg_type == "stream":
         if REPLY_MODE != "stream":
