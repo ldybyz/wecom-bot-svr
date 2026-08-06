@@ -183,7 +183,9 @@ class WecomBotServer(object):
                 self._error_handler(ret)
             else:
                 return None
-            
+
+        print(f"@解密后的内容: {msg}")
+        
         # 解密后的数据是xml格式，用python的标准库xml.etree.cElementTree可以解析
         # xml_tree = ET.fromstring(msg)
         json_object = json.loads(msg)
