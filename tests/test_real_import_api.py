@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import pdfbot  # noqa: E402
 
 FOLDERNO = "FDD121582026073001"
+BUSRNAM = "12158"
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -55,10 +56,11 @@ if __name__ == "__main__":
     build_minimal_docx(docx_path)
     print(f"已生成测试 docx: {docx_path} ({os.path.getsize(docx_path)} bytes)")
     print(f"接口: {pdfbot.ANALYZE_API_URL}")
-    print(f"单号: {FOLDERNO}\n")
+    print(f"单号: {FOLDERNO}")
+    print(f"工号: {BUSRNAM}\n")
 
     try:
-        result = pdfbot.call_import_api(docx_path, FOLDERNO)
+        result = pdfbot.call_import_api(docx_path, FOLDERNO, BUSRNAM)
         print("接口返回结果文本:")
         print(result)
         if result.startswith(pdfbot.ANALYZE_FAILED_PREFIX):

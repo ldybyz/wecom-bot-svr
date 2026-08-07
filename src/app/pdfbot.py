@@ -24,18 +24,22 @@ load_dotenv()
 UNSUPPORTED_MSG = "不支持该消息类型"
 RECEIVED_MSG = "已收到文件，正在导入解析，请稍候…"
 WELCOME_MSG = (
-    "请发送 .pdf、.docx 或 .xlsx 委托单文件（≤ 50MB）并告知委托单单号（如 FDD121582026073001）。\n"
-    "顺序不限：可以先发单号再发文件，也可以先发文件再补单号。"
+    "请发送 .pdf、.docx 或 .xlsx 委托单文件（≤ 50MB），并发送一条文本消息告知委托单单号"
+    "（如 FDD121582026073001）和工号（5-6 位数字，如 12158）。\n"
+    "顺序不限：可以先发文本再发文件，也可以先发文件再补文本。\n"
+    "委托单单号可缺省；文本中未提供工号时，将使用您的账号（userid）作为工号。"
 )
 ANALYZE_FAILED_PREFIX = "导入失败："
-NEED_FOLDERNO_MSG = "已收到文件，请再发送一条文本消息告知委托单单号（如 FDD121582026073001）"
-NEED_FILE_MSG = "已记录委托单单号：{folderno}，请发送 .pdf、.docx 或 .xlsx 文件（≤ 50MB）"
+NEED_TEXT_MSG = (
+    "已收到文件，请再发送一条文本消息告知委托单单号（如 FDD121582026073001）和/或工号（5-6 位数字）；"
+    "单号可缺省，未提供工号时将使用您的账号（userid）"
+)
 FILE_TOO_LARGE_MSG = "文件超过 {limit}MB 限制，请压缩后重新发送"
-INVALID_FOLDERNO_MSG = "单号格式不正确，应为字母和数字的组合（如 FDD121582026073001），请重新发送"
 
 ANALYZE_API_URL = os.getenv("ANALYZE_API_URL", "")
 ANALYZE_API_FILE_FIELD = os.getenv("ANALYZE_API_FILE_FIELD", "file")
 ANALYZE_API_FOLDERNO_FIELD = os.getenv("ANALYZE_API_FOLDERNO_FIELD", "folderno")
+ANALYZE_API_BUSRNAM_FIELD = os.getenv("ANALYZE_API_BUSRNAM_FIELD", "busrnam")
 ANALYZE_API_TOKEN = os.getenv("ANALYZE_API_TOKEN", "")
 ANALYZE_RESULT_KEY = os.getenv("ANALYZE_RESULT_KEY", "")
 ANALYZE_TIMEOUT = int(os.getenv("ANALYZE_TIMEOUT", "120"))
@@ -46,15 +50,18 @@ ANALYZE_API_USER_AGENT = os.getenv(
 )
 MAX_FILE_SIZE_MB = int(os.getenv("ANALYZE_MAX_FILE_SIZE_MB", "50"))
 ALLOWED_EXTENSIONS = (".pdf", ".docx", ".xlsx")
-# 单号为字母和数字的组合，如 FDD121582026073001
-FOLDERNO_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9]{5,31}$")
+# 单号为字母开头的字母数字组合，如 FDD121582026073001；前后加边界断言，用于从自由文本中搜索提取
+FOLDERNO_PATTERN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]{5,31}(?![A-Za-z0-9])")
+# 工号为独立的 5-6 位数字，如 12158；前后不能紧邻其他字母数字，避免误取自单号内部
+BUSRNAM_PATTERN = re.compile(r"(?<![A-Za-z0-9])\d{5,6}(?![A-Za-z0-9])")
 # stream：被动流式回复（官方推荐，支持长任务，difybot 同款）；async：response_url 主动推送
 _REPLY_MODE_RAW = os.getenv("REPLY_MODE", "stream").strip().lower()
 REPLY_MODE = _REPLY_MODE_RAW if _REPLY_MODE_RAW in ("async", "stream") else "stream"
 
 store_lock = threading.Lock()
 conversations_store = TTLCache(maxsize=1024, ttl=600)
-# 会话级"半成品"状态：{"folderno": str, "file_path": str}，等待另一要素到齐后提交
+# 会话级"半成品"状态：{"folderno": str, "busrnam": str, "file_path": str, "text_received": bool}，
+# 等待文本与文件两要素到齐后提交
 pending_store = TTLCache(maxsize=1024, ttl=600)
 
 
@@ -97,9 +104,16 @@ def is_file_too_large(local_path: str) -> bool:
         return True
 
 
-def is_valid_folderno(text: str) -> bool:
-    """校验单号格式：字母和数字的组合，如 FDD121582026073001。"""
-    return bool(FOLDERNO_PATTERN.fullmatch(text))
+def extract_folderno(text: str) -> str:
+    """从文本中搜索提取委托单单号（字母开头的字母数字组合）；提取不到返回空串。"""
+    m = FOLDERNO_PATTERN.search(text or "")
+    return m.group(0) if m else ""
+
+
+def extract_busrnam(text: str) -> str:
+    """从文本中搜索提取工号（独立的 5-6 位数字）；提取不到返回空串。"""
+    m = BUSRNAM_PATTERN.search(text or "")
+    return m.group(0) if m else ""
 
 
 def _extract_result_text(response: requests.Response) -> str:
@@ -141,8 +155,8 @@ def _extract_result_text(response: requests.Response) -> str:
     return str(data)
 
 
-def call_import_api(file_path: str, folderno: str) -> str:
-    """multipart 上传本地文件 + folderno 到导入接口，返回结果文本。"""
+def call_import_api(file_path: str, folderno: str, busrnam: str) -> str:
+    """multipart 上传本地文件 + folderno（可缺省）+ busrnam 工号到导入接口，返回结果文本。"""
     if not ANALYZE_API_URL:
         raise ValueError("未配置 ANALYZE_API_URL")
 
@@ -160,7 +174,10 @@ def call_import_api(file_path: str, folderno: str) -> str:
     with open(file_path, "rb") as f:
         response = requests.post(
             ANALYZE_API_URL,
-            data={ANALYZE_API_FOLDERNO_FIELD: folderno},
+            data={
+                ANALYZE_API_FOLDERNO_FIELD: folderno,
+                ANALYZE_API_BUSRNAM_FIELD: busrnam,
+            },
             files={ANALYZE_API_FILE_FIELD: (filename, f, mime)},
             headers=headers,
             timeout=ANALYZE_TIMEOUT,
@@ -172,6 +189,25 @@ def call_import_api(file_path: str, folderno: str) -> str:
 
 def _resolve_chat_id(req_msg: ReqMsg) -> str:
     return req_msg.chat_id or (req_msg.from_user.user_id if req_msg.from_user else "")
+
+
+def _resolve_user_id(req_msg: ReqMsg) -> str:
+    """当前发消息用户的 userid，文本中缺失工号时用它回退。"""
+    return req_msg.from_user.user_id if req_msg.from_user else ""
+
+
+def _build_need_file_msg(folderno: str, busrnam: str, bus_from_text: bool) -> str:
+    """组装"请发送文件"提示。工号非文本提取（回退自 userid）时在回复中带上 userid，
+    便于用户核对；单号/工号均未识别到时也接受请求并说明。"""
+    parts = []
+    if folderno:
+        parts.append(f"已记录委托单单号：{folderno}")
+    if busrnam:
+        suffix = "" if bus_from_text else "（文本中未识别到工号，已使用您的账号）"
+        parts.append(f"工号：{busrnam}{suffix}")
+    if not parts:
+        parts.append("未能从消息中识别委托单单号或工号")
+    return "，".join(parts) + "，请发送 .pdf、.docx 或 .xlsx 文件（≤ 50MB）"
 
 
 def _resolve_webhook_url(req_msg: ReqMsg) -> str:
@@ -244,12 +280,12 @@ def _resolve_local_path(server: WecomBotServer, local_file_name: str) -> str:
     return os.path.join(server.file_storage_path, local_file_name)
 
 
-def _run_import_and_store(stream_id: str, file_path: str, folderno: str):
+def _run_import_and_store(stream_id: str, file_path: str, folderno: str, busrnam: str):
     with store_lock:
         conversations_store[stream_id] = {"status": "processing", "response": "正在导入解析，请稍候…"}
 
     try:
-        result = call_import_api(file_path, folderno)
+        result = call_import_api(file_path, folderno, busrnam)
     except Exception as e:
         logging.exception("委托单导入失败")
         result = f"{ANALYZE_FAILED_PREFIX}{e}"
@@ -265,9 +301,10 @@ def _run_import_and_push(
     chat_id: str,
     file_path: str,
     folderno: str,
+    busrnam: str,
 ):
     try:
-        result = call_import_api(file_path, folderno)
+        result = call_import_api(file_path, folderno, busrnam)
     except Exception as e:
         logging.exception("委托单导入失败")
         result = f"{ANALYZE_FAILED_PREFIX}{e}"
@@ -275,8 +312,15 @@ def _run_import_and_push(
     _push_text(server, response_url, webhook_url, chat_id, result)
 
 
-def _submit(server: WecomBotServer, req_msg: ReqMsg, session_key: str, folderno: str, file_path: str):
-    """单号与文件两要素齐全，清除待办并按 REPLY_MODE 提交。"""
+def _submit(
+    server: WecomBotServer,
+    req_msg: ReqMsg,
+    session_key: str,
+    folderno: str,
+    busrnam: str,
+    file_path: str,
+):
+    """文本与文件两要素齐全（folderno 允许缺省），清除待办并按 REPLY_MODE 提交。"""
     with store_lock:
         pending_store.pop(session_key, None)
 
@@ -284,7 +328,7 @@ def _submit(server: WecomBotServer, req_msg: ReqMsg, session_key: str, folderno:
         stream_id = str(uuid.uuid4())
         threading.Thread(
             target=_run_import_and_store,
-            args=(stream_id, file_path, folderno),
+            args=(stream_id, file_path, folderno, busrnam),
             daemon=True,
         ).start()
         return RspStreamTextMsg(
@@ -302,7 +346,7 @@ def _submit(server: WecomBotServer, req_msg: ReqMsg, session_key: str, folderno:
         )
     threading.Thread(
         target=_run_import_and_push,
-        args=(server, response_url, webhook_url, chat_id, file_path, folderno),
+        args=(server, response_url, webhook_url, chat_id, file_path, folderno, busrnam),
         daemon=True,
     ).start()
     return RspTextMsg(text=TextContent(content=""))
@@ -315,27 +359,37 @@ def _unsupported(req_msg: ReqMsg = None):
 
 
 def _handle_text(req_msg: TextReqMsg, server: WecomBotServer):
-    """文本消息视为 folderno：校验格式后，若已暂存文件则立即提交，否则先记下单号。"""
-    folderno = (req_msg.content or "").strip()
-    if not folderno:
+    """文本消息：从中提取委托单单号（可缺省）与工号（5-6 位数字，缺失时回退 userid），
+    即使两者均提取不到也接受请求；若已暂存文件则立即提交，否则先记下并提示发送文件。"""
+    content = (req_msg.content or "").strip()
+    if not content:
         return _unsupported(req_msg)
-    if not is_valid_folderno(folderno):
-        return _reply_text(req_msg, INVALID_FOLDERNO_MSG)
 
     session_key = _resolve_chat_id(req_msg)
     with store_lock:
         pending = dict(pending_store.get(session_key, {}))
+
+    folderno = extract_folderno(content) or pending.get("folderno", "")
+    extracted_bus = extract_busrnam(content)
+    bus_from_text = bool(extracted_bus or pending.get("busrnam"))
+    busrnam = extracted_bus or pending.get("busrnam", "") or _resolve_user_id(req_msg)
+
     file_path = pending.get("file_path")
     if file_path and os.path.isfile(file_path):
-        return _submit(server, req_msg, session_key, folderno, file_path)
+        return _submit(server, req_msg, session_key, folderno, busrnam, file_path)
 
     with store_lock:
-        pending_store[session_key] = {**pending, "folderno": folderno}
-    return _reply_text(req_msg, NEED_FILE_MSG.format(folderno=folderno))
+        pending_store[session_key] = {
+            **pending,
+            "folderno": folderno,
+            "busrnam": busrnam,
+            "text_received": True,
+        }
+    return _reply_text(req_msg, _build_need_file_msg(folderno, busrnam, bus_from_text))
 
 
 def _handle_file(req_msg: FileReqMsg, server: WecomBotServer):
-    """文件消息：若已记下单号则立即提交，否则暂存文件并提示补单号。"""
+    """文件消息：若已收到过文本（单号/工号可缺省）则立即提交，否则暂存文件并提示补文本。"""
     if not req_msg.local_file_name:
         return _reply_text(req_msg, f"{ANALYZE_FAILED_PREFIX}文件下载或解密失败")
 
@@ -358,13 +412,19 @@ def _handle_file(req_msg: FileReqMsg, server: WecomBotServer):
     session_key = _resolve_chat_id(req_msg)
     with store_lock:
         pending = dict(pending_store.get(session_key, {}))
-    folderno = pending.get("folderno")
-    if folderno:
-        return _submit(server, req_msg, session_key, folderno, local_path)
+    if pending.get("text_received"):
+        return _submit(
+            server,
+            req_msg,
+            session_key,
+            pending.get("folderno", ""),
+            pending.get("busrnam", ""),
+            local_path,
+        )
 
     with store_lock:
         pending_store[session_key] = {**pending, "file_path": local_path}
-    return _reply_text(req_msg, NEED_FOLDERNO_MSG)
+    return _reply_text(req_msg, NEED_TEXT_MSG)
 
 
 def msg_handler(req_msg: ReqMsg, server: WecomBotServer):

@@ -130,9 +130,13 @@ if __name__ == "__main__":
     server = FakeServer()
     print(f"file_storage: {STORAGE}\n")
 
-    # ---- 用例 1：非法单号 ----
+    # ---- 用例 1：文本未含单号/工号 → 仍接受请求，回复携带 userid（工号回退用）----
     rsp = pdfbot.msg_handler(text_msg("abc!!!"), server)
-    check("非法单号被拒绝", rsp.text.content == pdfbot.INVALID_FOLDERNO_MSG, rsp.text.content)
+    check(
+        "未识别到要素仍接受且回复携带 userid",
+        "u1" in rsp.text.content and "请发送" in rsp.text.content,
+        rsp.text.content,
+    )
 
     # ---- 用例 2：先发单号 → 提示发文件；再发文件 → 提交并异步推送结果 ----
     rsp = pdfbot.msg_handler(text_msg("A2260119687101", response_url=RESPONSE_URL), server)
@@ -155,10 +159,10 @@ if __name__ == "__main__":
         str(server.sent),
     )
 
-    # ---- 用例 3：反向顺序，先发文件 → 提示补单号；补单号后提交 ----
+    # ---- 用例 3：反向顺序，先发文件 → 提示补文本；补文本后提交 ----
     write_file("test2.pdf", b"%PDF-1.4 second pdf")
     rsp = pdfbot.msg_handler(file_msg("test2.pdf"), server)
-    check("先发文件返回待单号提示", rsp.text.content == pdfbot.NEED_FOLDERNO_MSG, rsp.text.content)
+    check("先发文件返回待文本提示", rsp.text.content == pdfbot.NEED_TEXT_MSG, rsp.text.content)
 
     rsp = pdfbot.msg_handler(text_msg("B1234567890"), server)
     check("补单号后同步回执为空", rsp.text.content == "", rsp.text.content)
@@ -249,6 +253,52 @@ if __name__ == "__main__":
         str(poll_rsp),
     )
     pdfbot.REPLY_MODE = "async"
+
+    # ---- 用例 8：文本同时含单号与工号 → 提取工号并随导入接口提交 ----
+    rsp = pdfbot.msg_handler(text_msg("委托单 FDD121582026073001，工号 12345"), server)
+    check(
+        "同时提取单号与工号",
+        "FDD121582026073001" in rsp.text.content and "工号：12345" in rsp.text.content
+        and "u1" not in rsp.text.content,
+        rsp.text.content,
+    )
+    write_file("test8.pdf", b"%PDF-1.4 busrnam extract test")
+    rsp = pdfbot.msg_handler(file_msg("test8.pdf"), server)
+    wait_push(server, 3)
+    check(
+        "提取的工号随导入接口提交",
+        len(server.sent) == 3 and "busrnam=12345" in server.sent[2][1],
+        str(server.sent),
+    )
+
+    # ---- 用例 9：文本仅含工号、无单号 → 接受请求，folderno 缺省提交 ----
+    rsp = pdfbot.msg_handler(text_msg("工号123456"), server)
+    check(
+        "仅工号也接受且不带 userid 回退说明",
+        "工号：123456" in rsp.text.content and "u1" not in rsp.text.content,
+        rsp.text.content,
+    )
+    write_file("test9.pdf", b"%PDF-1.4 no folderno test")
+    rsp = pdfbot.msg_handler(file_msg("test9.pdf"), server)
+    wait_push(server, 4)
+    check(
+        "缺省单号仍可导入且工号正确",
+        len(server.sent) == 4 and "委托单链接" in server.sent[3][1]
+        and "busrnam=123456" in server.sent[3][1],
+        str(server.sent),
+    )
+
+    # ---- 用例 10：文本提取不到单号与工号 → 接受请求，工号回退为 userid 提交 ----
+    rsp = pdfbot.msg_handler(text_msg("你好，请帮忙导入"), server)
+    check("未识别到要素时回复携带 userid", "u1" in rsp.text.content, rsp.text.content)
+    write_file("test10.pdf", b"%PDF-1.4 fallback userid test")
+    rsp = pdfbot.msg_handler(file_msg("test10.pdf"), server)
+    wait_push(server, 5)
+    check(
+        "工号回退为 userid 提交",
+        len(server.sent) == 5 and "busrnam=u1" in server.sent[4][1],
+        str(server.sent),
+    )
 
     print()
     if failures:
